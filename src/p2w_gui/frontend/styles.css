@@ -4,9 +4,10 @@
    The app is a converter, not a workbench: drop files, wait, take the document.
    One window, no navigation.
 
-   Material: the window is transparent and macOS NSVisualEffectView provides the
-   frosted backdrop (see apply_vibrancy in main.rs). CSS only paints content that
-   floats on that glass and must never fill an opaque background.
+   Material: on macOS the window is transparent and NSVisualEffectView provides
+   the frosted backdrop (see apply_vibrancy in main.rs), so the page itself stays
+   transparent. Other platforms have no vibrancy layer -- html.no-glass paints an
+   opaque backdrop instead (set by an inline script in pdf2word.html).
    ============================================================ */
 
 :root {
@@ -30,6 +31,9 @@
   --fill-hi: rgba(255, 255, 255, 0.8);
   --hair: rgba(0, 0, 0, 0.09);
   --rim: rgba(255, 255, 255, 0.65);      /* top edge highlight */
+
+  /* Opaque backdrop for platforms without vibrancy (html.no-glass). */
+  --bg-solid: #f3f3f5;
 
   --r-card: 12px;
   --r-ctrl: 8px;
@@ -64,6 +68,8 @@
   --hair: rgba(255, 255, 255, 0.12);
   --rim: rgba(255, 255, 255, 0.14);
 
+  --bg-solid: #1d1d1f;
+
   color-scheme: dark;
 }
 
@@ -75,9 +81,12 @@ body {
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
-  /* Transparent by design: the system layer owns the material. */
+  /* Transparent by design on macOS: the system layer owns the material.
+     Other platforms paint an opaque backdrop (no vibrancy exists there,
+     and a transparent window would show whatever sits behind the app). */
   background: transparent;
 }
+html.no-glass .app-root { background: var(--bg-solid); }
 
 button { font-family: inherit; }
 kbd {

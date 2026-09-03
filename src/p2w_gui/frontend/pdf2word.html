@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>抄录</title>
   <!-- 字体改用系统中文字体，避免依赖 Google Fonts CDN（离线/国内可用） -->
+  <script>
+    // 只有 macOS 的窗口是透明的（毛玻璃由 NSVisualEffectView 提供）；
+    // 其他平台没有 vibrancy 层，必须给页面一个不透明底色，否则整窗透明。
+    // 在首帧绘制前给 html 打标，CSS 命中 .no-glass 时铺底色。
+    if (!/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)) {
+      document.documentElement.classList.add('no-glass');
+    }
+  </script>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>

@@ -37,7 +37,6 @@
         "minWidth": 640,
         "minHeight": 520,
         "decorations": true,
-        "transparent": true,
         "titleBarStyle": "Overlay",
         "resizable": true,
         "center": true,

@@ -1,0 +1,20 @@
+{
+  "tauri": {
+    "windows": [
+      {
+        "url": "pdf2word.html",
+        "title": "抄录",
+        "width": 880,
+        "height": 720,
+        "minWidth": 640,
+        "minHeight": 520,
+        "decorations": true,
+        "transparent": true,
+        "titleBarStyle": "Overlay",
+        "resizable": true,
+        "center": true,
+        "hiddenTitle": true
+      }
+    ]
+  }
+}
