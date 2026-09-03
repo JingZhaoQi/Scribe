@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -69,8 +70,10 @@ class OCRBackendError(RuntimeError):
 
 def find_mineru() -> str | None:
     """Locate the mineru executable: env var > project venv > PATH."""
+    venv = _PROJECT_ROOT / ".venv-mineru"
     for c in (os.environ.get("P2W_MINERU"),
-              str(_PROJECT_ROOT / ".venv-mineru" / "bin" / "mineru"),
+              str(venv / "bin" / "mineru"),
+              str(venv / "Scripts" / "mineru.exe"),   # Windows venv layout
               shutil.which("mineru")):
         if c and Path(c).exists():
             return c
@@ -90,8 +93,13 @@ def _bundled_has_mineru(py: str) -> bool:
     and let the UI offer local recognition. Probing site-packages is far cheaper
     than spawning `python -c "import mineru"`.
     """
-    root = Path(py).resolve().parent.parent
-    return any(root.glob("lib/python*/site-packages/mineru"))
+    # POSIX interpreters sit in <root>/bin, Windows ones directly in <root>,
+    # and the two lay site-packages out differently. Probing only the POSIX
+    # shape reported "no local engine" on Windows even with mineru bundled.
+    exe_dir = Path(py).resolve().parent
+    root = exe_dir.parent if exe_dir.name.lower() in ("bin", "scripts") else exe_dir
+    return (any(root.glob("lib/python*/site-packages/mineru"))
+            or (root / "Lib" / "site-packages" / "mineru").is_dir())
 
 
 def mineru_cmd(module: str = "mineru.cli.client") -> list[str] | None:
@@ -285,12 +293,10 @@ def _run_streaming(cmd: list[str], env: dict, timeout: int,
 
 def _kill_group(proc: subprocess.Popen) -> None:
     """连同子进程拉起的孙子进程一起杀——识别引擎会自己 spawn 服务进程，
-    只 kill 父进程的话它们会变孤儿继续占着显存。"""
-    import signal
-    try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    except Exception:
-        proc.kill()
+    只 kill 父进程的话它们会变孤儿继续占着显存。
+
+    Windows has no killpg; kill_tree() shells out to `taskkill /T` instead."""
+    kill_tree(proc)
     try:
         proc.wait(timeout=5)
     except Exception:

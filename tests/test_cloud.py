@@ -6,6 +6,7 @@ button in the UI. These tests cover what must not be uploaded or leaked.
 Run: python3 tests/test_cloud.py
 """
 
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -143,7 +144,10 @@ def main() -> int:
         cur = settings.save(engine="cloud", api_token="  sk-abcdefgh1234  ")
         assert cur == {"engine": "cloud", "api_token": "sk-abcdefgh1234", "export": "docx"}, cur
         assert settings.load()["api_token"] == "sk-abcdefgh1234"
-        assert oct(settings._FILE.stat().st_mode)[-3:] == "600", "Key 文件权限该收到 0600"
+        # NTFS has no POSIX mode bits, so chmod(0600) is a no-op there; the
+        # file inherits the per-user ACL of %APPDATA% instead.
+        if os.name != "nt":
+            assert oct(settings._FILE.stat().st_mode)[-3:] == "600", "Key 文件权限该收到 0600"
 
         pub = settings.public()
         assert pub["hasToken"] is True and pub["engine"] == "cloud"

@@ -31,6 +31,16 @@ _FILE = _DIR / "settings.json"
 _DEFAULT = {"engine": "local", "api_token": "", "export": "docx"}
 
 
+def log_file() -> Path:
+    """Where the backend records its output.
+
+    A packaged build is started by the desktop shell, which on Windows is a GUI
+    subsystem process and hands the child no console at all; without this file a
+    startup traceback would go nowhere.
+    """
+    return _DIR / "backend.log"
+
+
 def load() -> dict:
     try:
         data = json.loads(_FILE.read_text(encoding="utf-8"))

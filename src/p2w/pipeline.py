@@ -22,6 +22,7 @@ from . import hybrid, textlayer
 from .normalize import check_readable, is_supported
 from .render_docx import ReviewItem, render
 from .review import write_report
+from .winpath import exists as _exists, long_path, make_dirs
 
 
 @dataclass
@@ -44,11 +45,13 @@ class ConversionResult:
 
 
 def _unique_path(path: Path) -> Path:
-    if not path.exists():
+    # winpath.exists, not Path.exists: a >260-character path answers False on
+    # Windows whether or not the file is there, which would silently overwrite.
+    if not _exists(path):
         return path
     for i in range(2, 1000):
         candidate = path.with_name(f"{path.stem} ({i}){path.suffix}")
-        if not candidate.exists():
+        if not _exists(candidate):
             return candidate
     raise FileExistsError(f"too many duplicate outputs for {path.name}")
 
@@ -67,8 +70,7 @@ def convert_file(input_path: str | Path, output_dir: str | Path,
 
     opts = opts or ConvertOptions()
     input_path = Path(input_path)
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = make_dirs(output_dir)
     result = ConversionResult(source=input_path)
 
     _phase("check")
@@ -119,10 +121,11 @@ def convert_file(input_path: str | Path, output_dir: str | Path,
             if opts.export_format == "md":
                 # Markdown keeps LaTeX verbatim, so no review report is produced.
                 from .render_md import render_md
-                render_md(doc_model, str(out_docx))
+                render_md(doc_model, long_path(out_docx))
                 review = []
             else:
-                review = render(doc_model, str(out_docx), flag_formulas=opts.review_all_formulas)
+                review = render(doc_model, long_path(out_docx),
+                                flag_formulas=opts.review_all_formulas)
 
         result.docx_path = out_docx
         result.review_items = review
@@ -130,7 +133,7 @@ def convert_file(input_path: str | Path, output_dir: str | Path,
             report = out_docx.with_name(out_docx.stem + ".复核报告.html")
             if not overwrite:
                 report = _unique_path(report)
-            write_report(review, report, source_file=str(input_path))
+            write_report(review, long_path(report), source_file=str(input_path))
             result.report_path = report
         result.ok = True
     except Cancelled:
@@ -192,7 +195,7 @@ def _write_error_detail(output_dir: Path, source: Path, exc: Exception) -> None:
         return
     import time
     try:
-        note = output_dir / f"{source.stem}.错误详情.txt"
+        note = Path(long_path(output_dir / f"{source.stem}.错误详情.txt"))
         note.write_text(
             f"文件：{source}\n"
             f"时间：{time.strftime('%Y-%m-%d %H:%M:%S')}\n"

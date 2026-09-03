@@ -7,7 +7,7 @@
 )]
 
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 
@@ -109,6 +109,17 @@ fn spawn_backend(app: &AppHandle) -> Option<Child> {
 
     let mut cmd = Command::new(&python);
     cmd.args(["-m", "p2w_gui.server", "8756"]).env("PYTHONPATH", &src);
+    // This process is windows_subsystem="windows", so the child inherits no
+    // console: its std handles are invalid and Python sets sys.stdout to None.
+    // Hand it explicit null streams instead, and suppress the console window
+    // Windows would otherwise pop up for a console-subsystem child.
+    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
     if bundled {
         // In bundled builds MinerU lives in this interpreter; `python -m` avoids
         // the broken console-script shebang.

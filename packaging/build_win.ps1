@@ -63,13 +63,21 @@ $cfgFile = Join-Path $env:TEMP "tauri.build.json"
 # NSIS only: WiX light.exe needs ~8 minutes per language for a 1.4 GB payload
 # with tens of thousands of files, and fails outright on the second pass.
 [System.IO.File]::WriteAllText($cfgFile, '{"tauri":{"bundle":{"resources":["payload/**/*"],"targets":["nsis"]}}}')
+
+# CI caches src-tauri/target, so a previous run's renamed installer is still
+# sitting in the bundle directory. Left there it makes the lookup below match
+# two files and the rename fail with "Cannot convert 'System.Object[]'".
+$bundleDir = "src-tauri\target\release\bundle\nsis"
+if (Test-Path $bundleDir) { Remove-Item -Recurse -Force $bundleDir }
+
 tauri build --config $cfgFile
 
-$nsis = Get-ChildItem -Path "src-tauri\target\release\bundle\nsis" -Filter *.exe -ErrorAction SilentlyContinue
+$nsis = Get-ChildItem -Path $bundleDir -Filter *.exe -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime | Select-Object -Last 1
 if (-not $nsis) { throw "no installer produced; check the build output" }
 # English installer filename; GitHub strips non-ASCII from release asset names.
 $version = (Get-Content "src-tauri\tauri.conf.json" | ConvertFrom-Json).package.version
-$enName = Join-Path $nsis.DirectoryName "Scribe_${version}_x64-setup.exe"
+$enName = [string](Join-Path $nsis.DirectoryName "Scribe_${version}_x64-setup.exe")
 Move-Item -Force $nsis.FullName $enName
 Write-Host "OK  $enName"
 Write-Host "Unsigned -- SmartScreen will warn on first launch."

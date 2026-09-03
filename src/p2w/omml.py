@@ -41,10 +41,14 @@ def _pandoc() -> str:
     env = os.environ.get("P2W_PANDOC")
     if env and Path(env).exists():
         return env
-    # Sources live at <payload>/src/p2w/omml.py; pandoc sits at <payload>/pandoc.
-    bundled = Path(__file__).resolve().parents[2] / "pandoc"
-    if bundled.exists():
-        return str(bundled)
+    # Sources live at <payload>/src/p2w/omml.py; pandoc sits at <payload>/pandoc
+    # (pandoc.exe on Windows -- without the suffix nothing matches and every
+    # formula silently degrades to highlighted text).
+    payload = Path(__file__).resolve().parents[2]
+    for name in ("pandoc", "pandoc.exe"):
+        bundled = payload / name
+        if bundled.exists():
+            return str(bundled)
     return shutil.which("pandoc") or "pandoc"
 
 

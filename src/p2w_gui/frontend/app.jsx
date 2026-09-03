@@ -209,11 +209,25 @@
         return prev.concat(picked.filter((f) => !have.has(f.id)));
       });
     };
+    // A drop or a pick that adds nothing must still say why -- silence reads
+    // as a broken drop zone, and "already in the list" is the common case.
+    const SKIP_TEXT = { duplicate: "已经在列表里了", unsupported: "格式不支持",
+                        missing: "文件不存在", unknown: "没能添加" };
+    const report = (res) => {
+      merge(res.files);
+      const skipped = res.skipped || [];
+      if (res.files && res.files.length) return;
+      if (!skipped.length) return;
+      const why = skipped[0].why;
+      const head = skipped.length > 1 ? `${skipped.length} 个文件` : skipped[0].name;
+      say(`${head}：${t(SKIP_TEXT[why] || SKIP_TEXT.unknown)}`, "err");
+    };
+
     const addFiles = async () => {
       try {
         const sel = await TAURI().dialog.open({ multiple: true, filters: [{ name: t("PDF 与图片"), extensions: EXTS }] });
         if (!sel) return;
-        merge((await post("/add", { paths: Array.isArray(sel) ? sel : [sel] })).files);
+        report(await post("/add", { paths: Array.isArray(sel) ? sel : [sel] }));
       } catch (e) { say(t("选择文件失败"), "err"); }
     };
     const addFolder = async () => {
@@ -226,18 +240,20 @@
 
     // Tauri intercepts HTML5 drop, so real paths come from its own event.
     useEffect(() => {
-      const t = TAURI();
-      if (!t || !t.event) return;
+      // Not named `t`: that is the translator in this scope, and shadowing it
+      // made the error branch call the Tauri namespace as a function.
+      const tauri = TAURI();
+      if (!tauri || !tauri.event) return;
       const uns = [];
-      t.event.listen("tauri://file-drop", async (ev) => {
+      tauri.event.listen("tauri://file-drop", async (ev) => {
         setOver(false);
         const pl = ev.payload;
         const paths = Array.isArray(pl) ? pl : (pl && pl.paths) ? pl.paths : [];
         if (!paths.length) return;
-        try { merge((await post("/add", { paths })).files); } catch (e) { say(t("拖入失败"), "err"); }
+        try { report(await post("/add", { paths })); } catch (e) { say(t("拖入失败"), "err"); }
       }).then((f) => uns.push(f));
-      t.event.listen("tauri://file-drop-hover", () => setOver(true)).then((f) => uns.push(f));
-      t.event.listen("tauri://file-drop-cancelled", () => setOver(false)).then((f) => uns.push(f));
+      tauri.event.listen("tauri://file-drop-hover", () => setOver(true)).then((f) => uns.push(f));
+      tauri.event.listen("tauri://file-drop-cancelled", () => setOver(false)).then((f) => uns.push(f));
       return () => uns.forEach((f) => f && f());
     }, []);
 
