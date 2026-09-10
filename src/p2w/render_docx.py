@@ -98,10 +98,11 @@ def _collect_formulas(doc_model: M.DocModel) -> list[tuple[str, bool]]:
     return items
 
 
-# Control characters XML 1.0 rejects (tab and newline kept). PDF text layers do
-# contain these -- private-use code points and hyphenation marks extract as
-# \x02 or \x0c -- and python-docx refuses to write them.
-_XML_BAD = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+# Characters XML 1.0 rejects (tab and newline kept). PDF text layers do contain
+# these -- private-use code points and hyphenation marks extract as \x02 or
+# \x0c, and CID-mapped layers can emit the noncharacters \ufffe and \uffff
+# (real case: a dash line ending in "————\uffff") -- lxml refuses them all.
+_XML_BAD = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ufffe\uffff\ud800-\udfff]")
 
 
 def _scrub(doc_model: M.DocModel) -> None:
@@ -116,11 +117,15 @@ def _scrub(doc_model: M.DocModel) -> None:
         for span in blk.spans:
             if span.text:
                 span.text = _XML_BAD.sub("", span.text)
+            if span.latex:
+                span.latex = _XML_BAD.sub("", span.latex)
         for row in blk.rows or []:
             for cell in row:
                 for span in cell:
                     if span.text:
                         span.text = _XML_BAD.sub("", span.text)
+                    if span.latex:
+                        span.latex = _XML_BAD.sub("", span.latex)
 
 
 def render(doc_model: M.DocModel, out_path: str, flag_formulas: bool = True) -> list[ReviewItem]:
