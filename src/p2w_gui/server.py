@@ -82,6 +82,7 @@ class ConvertManager:
         self._cur_pages = 1                  # page count of the current file
         self._engine = "local"               # engine used by this batch
         self._speed: dict[str, list] = {}    # engine -> [total secs, total pages]
+        self._server = None                  # resident MineruServer of the running batch
 
     def add(self, path: str) -> dict | None:
         p = Path(path)
@@ -179,6 +180,7 @@ class ConvertManager:
         # to per-file loading rather than failing the batch.
         pending = [i for i in ids if (self._files.get(i) or {}).get("status") not in ("done", "review")]
         server = MineruServer(co) if len(pending) > 1 and not co.use_cloud else None
+        self._server = server  # tracked so the parent watchdog can stop it on the way out
         if server:
             co.api_url = server.start()
         try:
@@ -275,6 +277,7 @@ class ConvertManager:
         finally:
             if server:
                 server.stop()
+            self._server = None
             self._running = False
             self._cancel = False
 
@@ -571,8 +574,52 @@ def check_token(req: SettingsReq):
     return {"ok": ok, "why": why}
 
 
+def _parent_alive(pid: int) -> bool:
+    import os
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _watch_parent() -> None:
+    """Exit when the launching shell (Tauri app) is gone.
+
+    The shell is supposed to kill this server on quit, but its exit hook does
+    not fire in the packaged build (verified on 0.1.1: Cmd+Q leaves this
+    process behind, and macOS reports the app as "running in background").
+    An orphan is reparented to PID 1, which cannot be faked, so poll the
+    parent and unwind when it vanishes.
+    """
+    import os
+    import time
+    try:
+        parent = int(os.environ.get("P2W_PARENT_PID") or 0)
+    except ValueError:
+        parent = 0
+    parent = parent or os.getppid()
+    if parent <= 1:
+        return                      # started detached on purpose; don't watch
+    while _parent_alive(parent) and os.getppid() != 1:
+        time.sleep(2)
+    mgr._cancel = True              # current file's engine subprocess gets killpg'd
+    _dl["cancel"] = True
+    try:
+        if mgr._server:             # resident MinerU service holds the 1.2B model
+            mgr._server.stop()
+    except Exception:               # noqa: BLE001 - dying anyway
+        pass
+    for _ in range(40):             # give _run's cancel path up to ~8 s
+        if not mgr._running:
+            break
+        time.sleep(0.2)
+    os._exit(0)
+
+
 def main():
     import uvicorn
+    threading.Thread(target=_watch_parent, daemon=True).start()
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8756
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
 

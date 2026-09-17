@@ -1,6 +1,7 @@
 // Tauri shell for pdf2word. On startup it launches the Python FastAPI backend
 // (p2w_gui.server) as a child process; the web UI talks to it over HTTP. The
-// child is killed when the app exits.
+// child is killed on exit where the runtime delivers an exit event, and
+// otherwise kills itself via its parent watchdog (P2W_PARENT_PID).
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
@@ -109,6 +110,9 @@ fn spawn_backend(app: &AppHandle) -> Option<Child> {
 
     let mut cmd = Command::new(&python);
     cmd.args(["-m", "p2w_gui.server", "8756"]).env("PYTHONPATH", &src);
+    // The backend watches this pid and exits if we die without killing it --
+    // the kill below does not fire reliably (see the note at the run handler).
+    cmd.env("P2W_PARENT_PID", std::process::id().to_string());
     if bundled {
         // In bundled builds MinerU lives in this interpreter; `python -m` avoids
         // the broken console-script shebang.
@@ -146,7 +150,10 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
+            // Fast path only: on the packaged macOS build ExitRequested did
+            // not fire on Cmd+Q (verified on 0.1.1), orphaning the backend.
+            // The real backstop is the backend's parent watchdog (server.py).
+            if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
                 if let Some(mut child) = app.state::<Backend>().0.lock().unwrap().take() {
                     let _ = child.kill();
                 }

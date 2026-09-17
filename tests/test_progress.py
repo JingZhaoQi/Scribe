@@ -91,5 +91,11 @@ ck("ETA 随实测修正（约 4×60=240s）", eta2 is not None and 220 <= eta2 <
 m = ConvertManager()
 ck("累加器初始为空", m._speed == {} and m._engine == "local")
 
+# --- _parent_alive: orphan watchdog probe (dead parent -> backend exits) ---
+import os
+from p2w_gui.server import _parent_alive
+ck("看门狗：当前进程判活", _parent_alive(os.getpid()))
+ck("看门狗：不存在的 pid 判死", not _parent_alive(1 << 30))
+
 print(f"\n=== 进度推算: {len(PASS)} 通过, {len(FAIL)} 失败 ===")
 sys.exit(1 if FAIL else 0)
